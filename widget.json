@@ -1,0 +1,81 @@
+{
+  "name": "googleSheetAutocomplete",
+  "label": "Google Sheet Autocomplete",
+  "icon": "https://yourdomain.com/icon.png",
+  "serverFiles": {
+    "js": ["main.js"],
+    "css": ["styles.css"]
+  },
+  "sandbox": true,
+  "description": "An autocomplete widget with fuzzy search using data from a Google Sheet.",
+  "version": "1.3.0",
+  "options": {
+    "googleSheetId": {
+      "type": "text",
+      "label": "Google Sheet ID",
+      "description": "Enter the ID of your public Google Sheet.",
+      "required": true,
+      "default": "1EqDyirzwOEhUm2u6uypgRhp2JDEEDcNBHc5rZYhulME"
+    },
+    "columnIndex": {
+      "type": "number",
+      "label": "Column Index",
+      "description": "Enter the zero-based index of the column to use for autocomplete (e.g., 0 for the first column).",
+      "default": 0
+    },
+    "placeholderText": {
+      "type": "text",
+      "label": "Placeholder Text",
+      "description": "Specify the placeholder text for the input field.",
+      "default": "Start typing..."
+    },
+    "inputWidth": {
+      "type": "text",
+      "label": "Input Field Width",
+      "description": "Specify the width of the input field (e.g., '100%', '300px').",
+      "default": "100%"
+    },
+    "autocompleteWidth": {
+      "type": "text",
+      "label": "Autocomplete List Width",
+      "description": "Specify the width of the autocomplete suggestions list (e.g., '100%', '300px').",
+      "default": "100%"
+    },
+    "dynamicResize": {
+      "type": "boolean",
+      "label": "Enable Dynamic Resize",
+      "description": "Adjust iframe height dynamically when suggestions are displayed.",
+      "default": true
+    },
+    "threshold": {
+      "type": "number",
+      "label": "Search Threshold",
+      "description": "Controls how fuzzy the search is (0.0 to 1.0). Lower values are more exact.",
+      "default": 0.2
+    },
+    "distance": {
+      "type": "number",
+      "label": "Search Distance",
+      "description": "Maximum distance for a match. Shorter distances are more exact.",
+      "default": 100
+    },
+    "maxResults": {
+      "type": "number",
+      "label": "Max Results",
+      "description": "Maximum number of suggestions to display.",
+      "default": 5
+    },
+    "minCharRequired": {
+      "type": "number",
+      "label": "Minimum Characters Required",
+      "description": "Minimum number of characters before suggestions appear.",
+      "default": 3
+    },
+    "debounceTime": {
+      "type": "number",
+      "label": "Debounce Time (ms)",
+      "description": "Delay in milliseconds for debouncing the input.",
+      "default": 300
+    }
+  }
+}

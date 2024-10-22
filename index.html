@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Google Sheet Autocomplete Widget</title>
+  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  <div id="widget-container" style="position: relative; width: 100%;">
+    <input
+      type="text"
+      id="autocomplete-input"
+      aria-autocomplete="list"
+      aria-haspopup="listbox"
+    >
+    <ul id="suggestions-list" role="listbox"></ul>
+  </div>
+
+  <!-- External Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@6"></script>
+  <script src="https://js.jotform.com/JotFormCustomWidget.min.js"></script>
+
+  <!-- Your Widget's JavaScript -->
+  <script src="main.js"></script>
+</body>
+</html>
