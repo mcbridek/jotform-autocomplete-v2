@@ -28,7 +28,7 @@ class AutocompleteWidget {
 
     async init() {
         JFCustomWidget.subscribe("ready", async () => {
-            this.config = JFCustomWidget.getWidgetSettings();
+            this.config = this.getWidgetSettings();
             this.setupEventListeners();
             await this.loadInitialData();
             this.adjustIframeHeight();
@@ -40,6 +40,20 @@ class AutocompleteWidget {
                 value: this.elements.input.value
             });
         });
+    }
+
+    getWidgetSettings() {
+        const settings = JFCustomWidget.getWidgetSettings();
+        return {
+            googleSheetId: settings.googleSheetId || '',
+            columnIndex: parseInt(settings.columnIndex) || 0,
+            minCharRequired: parseInt(settings.minCharRequired) || 2,
+            maxResults: parseInt(settings.maxResults) || 5,
+            debounceTime: parseInt(settings.debounceTime) || 300,
+            dynamicResize: settings.dynamicResize === 'true',
+            threshold: parseFloat(settings.threshold) || 0.2,
+            distance: parseInt(settings.distance) || 100
+        };
     }
 
     setupEventListeners() {
@@ -126,7 +140,12 @@ class AutocompleteWidget {
     }
 
     adjustIframeHeight() {
-        // ... (iframe height adjustment logic)
+        if (this.config.dynamicResize) {
+            const height = this.elements.widgetContainer.offsetHeight;
+            JFCustomWidget.requestFrameResize({
+                height: height
+            });
+        }
     }
 
     setupResizeObserver() {
