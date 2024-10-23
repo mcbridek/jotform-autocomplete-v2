@@ -1,142 +1,243 @@
-// Utility function to get widget settings with default values
-function getWidgetSetting(settingName, defaultValue, parseFunc = (val) => val) {
-  const setting = JFCustomWidget.getWidgetSetting(settingName);
-  return setting !== undefined && setting !== '' ? parseFunc(setting) : defaultValue;
-}
+import { SearchModule } from './modules/search.js';
+import { DataFetcher } from './modules/dataFetcher.js';
 
-// Fetch data from Google Sheet and store it in local storage to reduce fetches
-async function fetchGoogleSheetData(sheetId) {
-  const cacheKey = `googleSheetData_${sheetId}`;
-  const cachedData = localStorage.getItem(cacheKey);
+class AutocompleteWidget {
+    constructor() {
+        this.input = document.getElementById('autocomplete-input');
+        this.suggestionsList = document.getElementById('suggestions-list');
+        this.loadingIndicator = document.getElementById('loading-indicator');
+        this.selectedIndex = -1;
+        this.settings = {};
+        
+        this.init();
+    }
 
-  if (cachedData) {
-    return JSON.parse(cachedData);
-  }
+    async init() {
+        try {
+            // Initialize JotForm widget
+            JFCustomWidget.subscribe("ready", () => {
+                this.loadSettings();
+                this.setupEventListeners();
+                this.initialFetch();
+            });
 
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+            // Handle form submission
+            JFCustomWidget.subscribe("submit", () => {
+                JFCustomWidget.sendSubmit({
+                    valid: true,
+                    value: this.input.value
+                });
+            });
+        } catch (error) {
+            console.error('Initialization failed:', error);
+        }
+    }
 
-  try {
-    const response = await fetch(url);
-    const csvText = await response.text();
+    loadSettings() {
+        this.settings = {
+            sheetId: JFCustomWidget.getWidgetSetting('googleSheetId'),
+            columnIndex: parseInt(JFCustomWidget.getWidgetSetting('columnIndex')) || 0,
+            maxResults: parseInt(JFCustomWidget.getWidgetSetting('maxResults')) || 5,
+            minCharRequired: parseInt(JFCustomWidget.getWidgetSetting('minCharRequired')) || 3,
+            placeholder: JFCustomWidget.getWidgetSetting('placeholderText') || 'Start typing...',
+            threshold: parseFloat(JFCustomWidget.getWidgetSetting('threshold')) || 0.2,
+            distance: parseInt(JFCustomWidget.getWidgetSetting('distance')) || 100,
+            debounceTime: parseInt(JFCustomWidget.getWidgetSetting('debounceTime')) || 300
+        };
 
-    const rows = csvText
-      .split('\n')
-      .map(row => row.split(',').map(cell => cell.replace(/^"|"$/g, '')));
+        // Apply settings
+        this.input.placeholder = this.settings.placeholder;
+        
+        // Apply width settings if provided
+        const inputWidth = JFCustomWidget.getWidgetSetting('inputWidth');
+        if (inputWidth) {
+            this.input.style.width = inputWidth;
+        }
 
-    // Cache the data for future use
-    localStorage.setItem(cacheKey, JSON.stringify(rows));
+        const listWidth = JFCustomWidget.getWidgetSetting('autocompleteWidth');
+        if (listWidth) {
+            this.suggestionsList.style.width = listWidth;
+        }
+    }
 
-    return rows;
-  } catch (error) {
-    console.error('Error fetching Google Sheet data:', error);
-    return [];
-  }
-}
+    setupEventListeners() {
+        this.input.addEventListener('input', this.debounce(this.handleInput.bind(this), this.settings.debounceTime));
+        this.input.addEventListener('keydown', this.handleKeydown.bind(this));
+        document.addEventListener('click', this.handleClickOutside.bind(this));
+    }
 
-// Debounce function to limit the frequency of search operations
-function debounce(func, wait) {
-  let timeout;
-  return function (...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
-  };
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    async initialFetch() {
+        try {
+            this.showLoading();
+            this.data = await DataFetcher.fetchFromSheet(this.settings.sheetId);
+            this.hideLoading();
+        } catch (error) {
+            console.error('Initial fetch failed:', error);
+            this.hideLoading();
+            this.showError('Failed to load data. Please try again later.');
+        }
+    }
+
+    showLoading() {
+        this.loadingIndicator.style.display = 'block';
+    }
+
+    hideLoading() {
+        this.loadingIndicator.style.display = 'none';
+    }
+
+    showError(message) {
+        const errorElement = document.getElementById('error-message');
+        errorElement.textContent = message;
+        errorElement.style.display = 'block';
+    }
+
+    hideError() {
+        const errorElement = document.getElementById('error-message');
+        errorElement.style.display = 'none';
+    }
+
+    async handleInput(event) {
+        const searchTerm = event.target.value.trim();
+        this.hideError();
+        
+        if (searchTerm.length < this.settings.minCharRequired) {
+            this.hideSuggestions();
+            return;
+        }
+
+        try {
+            if (!this.data) {
+                this.showLoading();
+                this.data = await DataFetcher.fetchFromSheet(this.settings.sheetId);
+                this.hideLoading();
+            }
+
+            const matches = SearchModule.search(
+                searchTerm,
+                this.data,
+                this.settings.columnIndex,
+                this.settings.maxResults,
+                this.settings.threshold,
+                this.settings.distance
+            );
+
+            this.displaySuggestions(matches);
+
+            // Notify parent about height change if enabled
+            if (JFCustomWidget.getWidgetSetting('dynamicResize')) {
+                JFCustomWidget.requestFrameResize({
+                    height: document.body.scrollHeight
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fetch data:', error);
+            this.hideLoading();
+            this.showError('Failed to retrieve suggestions. Please try again.');
+        }
+    }
+
+    displaySuggestions(matches) {
+        if (matches.length === 0) {
+            this.hideSuggestions();
+            return;
+        }
+
+        this.suggestionsList.innerHTML = matches
+            .map(({ original, highlighted }, index) => `
+                <li role="option" 
+                    id="suggestion-${index}"
+                    class="suggestion-item ${index === 0 ? 'selected' : ''}"
+                    tabindex="-1"
+                    aria-selected="${index === 0}"
+                >${highlighted}</li>
+            `)
+            .join('');
+
+        this.suggestionsList.style.display = 'block';
+        this.selectedIndex = 0;
+
+        // Ensure first item is visible
+        const firstItem = this.suggestionsList.querySelector('li');
+        if (firstItem) {
+            firstItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        this.addSuggestionClickHandlers();
+    }
+
+    addSuggestionClickHandlers() {
+        const items = this.suggestionsList.getElementsByTagName('li');
+        Array.from(items).forEach(item => {
+            item.addEventListener('click', () => {
+                this.input.value = item.textContent.replace(/<\/?mark>/g, '');
+                this.hideSuggestions();
+                this.input.focus();
+            });
+        });
+    }
+
+    handleKeydown(event) {
+        const items = this.suggestionsList.getElementsByTagName('li');
+        if (!items.length) return;
+        
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
+                this.updateSelection(items);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+                this.updateSelection(items);
+                break;
+            case 'Enter':
+                event.preventDefault();
+                if (this.selectedIndex >= 0) {
+                    this.input.value = items[this.selectedIndex].textContent.replace(/<\/?mark>/g, '');
+                    this.hideSuggestions();
+                }
+                break;
+            case 'Escape':
+                this.hideSuggestions();
+                break;
+        }
+    }
+
+    updateSelection(items) {
+        Array.from(items).forEach((item, index) => {
+            item.classList.toggle('selected', index === this.selectedIndex);
+            item.setAttribute('aria-selected', index === this.selectedIndex);
+            if (index === this.selectedIndex) {
+                item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
+    }
+
+    handleClickOutside(event) {
+        if (!this.input.contains(event.target) && !this.suggestionsList.contains(event.target)) {
+            this.hideSuggestions();
+        }
+    }
+
+    hideSuggestions() {
+        this.suggestionsList.style.display = 'none';
+        this.selectedIndex = -1;
+    }
 }
 
 // Initialize the widget
-JFCustomWidget.subscribe('ready', async function () {
-  const input = document.getElementById('autocomplete-input');
-  const suggestionsList = document.getElementById('suggestions-list');
-
-  // Widget settings
-  const sheetId = JFCustomWidget.getWidgetSetting('googleSheetId');
-  const columnIndex = getWidgetSetting('columnIndex', 0, parseInt);
-  const debounceTime = getWidgetSetting('debounceTime', 400, parseInt); // Slightly increased debounce time
-  const maxResults = getWidgetSetting('maxResults', 5, parseInt);
-  const minCharRequired = getWidgetSetting('minCharRequired', 3, parseInt);
-
-  // Fetch data from Google Sheet
-  const data = await fetchGoogleSheetData(sheetId);
-
-  if (data.length > 0) {
-    // Transform data into objects for Fuse.js
-    const columnData = data.slice(1).map(row => ({ name: row[columnIndex] }));
-
-    // Initialize Fuse.js for fuzzy searching
-    const fuse = new Fuse(columnData, {
-      shouldSort: true,
-      threshold: 0.3, // Optimized for faster performance
-      distance: 100,
-      minMatchCharLength: minCharRequired,
-      keys: ['name']
-    });
-
-    let selectedIndex = -1;
-
-    // Add event listener to input with debouncing
-    input.addEventListener('input', debounce(onInputChange, debounceTime));
-
-    function onInputChange(e) {
-      const searchTerm = e.target.value;
-
-      if (searchTerm.length >= minCharRequired) {
-        const results = fuse.search(searchTerm).slice(0, maxResults);
-        displaySuggestions(results);
-      } else {
-        clearSuggestions();
-      }
-
-      // Send data on each input change
-      JFCustomWidget.sendSubmit({ value: input.value, valid: true });
-    }
-
-    function clearSuggestions() {
-      suggestionsList.style.display = 'none';
-      suggestionsList.innerHTML = '';
-    }
-
-    function displaySuggestions(results) {
-      suggestionsList.innerHTML = '';
-      selectedIndex = -1;
-
-      results.forEach((result, index) => {
-        const li = document.createElement('li');
-        li.innerHTML = result.item.name;
-        li.setAttribute('role', 'option');
-        li.setAttribute('id', `suggestion-${index}`);
-        li.addEventListener('click', () => {
-          input.value = result.item.name;
-          clearSuggestions();
-          JFCustomWidget.sendSubmit({ value: result.item.name, valid: true });
-        });
-        suggestionsList.appendChild(li);
-      });
-
-      suggestionsList.style.display = 'block';
-    }
-
-    // Keyboard navigation
-    input.addEventListener('keydown', (e) => {
-      const items = suggestionsList.getElementsByTagName('li');
-      if (e.key === 'Enter' && selectedIndex >= 0 && selectedIndex < items.length) {
-        e.preventDefault();
-        input.value = items[selectedIndex].textContent;
-        clearSuggestions();
-        JFCustomWidget.sendSubmit({ value: input.value, valid: true });
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (e.key === 'ArrowDown' && selectedIndex < items.length - 1) {
-          selectedIndex++;
-        } else if (e.key === 'ArrowUp' && selectedIndex > 0) {
-          selectedIndex--;
-        }
-        updateSelection(items);
-      }
-    });
-
-    function updateSelection(items) {
-      Array.from(items).forEach((item, index) => {
-        item.classList.toggle('selected', index === selectedIndex);
-      });
-    }
-  }
-});
+new AutocompleteWidget();

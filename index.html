@@ -1,27 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Google Sheet Autocomplete Widget</title>
-  <link rel="stylesheet" href="styles.css">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sheets Autocomplete Widget</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="widget-container" style="position: relative; width: 100%;">
-    <input
-      type="text"
-      id="autocomplete-input"
-      aria-autocomplete="list"
-      aria-haspopup="listbox"
-    >
-    <ul id="suggestions-list" role="listbox"></ul>
-  </div>
+    <div id="widget-container">
+        <input 
+            type="text" 
+            id="autocomplete-input" 
+            placeholder="Start typing to search..."
+            aria-label="Search input"
+            aria-autocomplete="list"
+            aria-controls="suggestions-list"
+        >
+        <div id="loading-indicator" class="loading" style="display: none;"></div>
+        <div id="error-message" class="error-message" style="display: none;"></div>
+        <ul id="suggestions-list" role="listbox"></ul>
+    </div>
 
-  <!-- External Libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/fuse.js@6"></script>
-  <script src="https://js.jotform.com/JotFormCustomWidget.min.js"></script>
-
-  <!-- Your Widget's JavaScript -->
-  <script src="main.js"></script>
+    <script src="https://js.jotform.com/JotFormCustomWidget.min.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
