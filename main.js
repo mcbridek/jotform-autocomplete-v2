@@ -99,14 +99,14 @@ class AutocompleteWidget {
             return;
         }
 
-        const inputHeight = this.input.offsetHeight;
-        let totalHeight = inputHeight;
+        let totalHeight = this.input.offsetHeight;
 
+        // Include suggestions list height if visible
         if (this.suggestionsList.style.display === 'block' && this.suggestionsList.childElementCount > 0) {
             totalHeight += this.suggestionsList.scrollHeight;
         }
 
-        // Add error message height if visible
+        // Include error message height if visible
         const errorElement = document.getElementById('error-message');
         if (errorElement && errorElement.style.display !== 'none') {
             totalHeight += errorElement.offsetHeight;
@@ -115,7 +115,8 @@ class AutocompleteWidget {
         // Add margins and padding
         const styles = window.getComputedStyle(this.widgetContainer);
         totalHeight += parseFloat(styles.marginTop) + parseFloat(styles.marginBottom);
-        
+        totalHeight += parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+
         // Additional padding for smooth appearance
         totalHeight += 20;
 
