@@ -3,6 +3,7 @@ import { DataFetcher } from './modules/dataFetcher.js';
 
 class AutocompleteWidget {
     constructor() {
+        console.log('Initializing AutocompleteWidget');
         this.input = document.getElementById('autocomplete-input');
         this.suggestionsList = document.getElementById('suggestions-list');
         this.loadingIndicator = document.getElementById('loading-indicator');
@@ -15,16 +16,17 @@ class AutocompleteWidget {
 
     async init() {
         try {
-            // Initialize JotForm widget
+            console.log('Subscribing to JFCustomWidget events');
             JFCustomWidget.subscribe("ready", () => {
+                console.log('Widget ready');
                 this.loadSettings();
                 this.setupEventListeners();
                 this.initialFetch();
                 this.adjustIframeHeight();
             });
 
-            // Handle form submission
             JFCustomWidget.subscribe("submit", () => {
+                console.log('Form submitted');
                 JFCustomWidget.sendSubmit({
                     valid: true,
                     value: this.input.value
