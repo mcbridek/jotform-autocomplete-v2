@@ -22,9 +22,7 @@ export const DataFetcher = {
             }
             
             const csvText = await response.text();
-            if (!csvText || csvText.trim() === '') {
-                throw new Error('Empty response received');
-            }
+            console.log('CSV Data:', csvText); // Log the CSV data
             
             // Parse CSV data
             const rows = csvText
@@ -33,7 +31,6 @@ export const DataFetcher = {
                     .split(',')
                     .map(cell => cell
                         .replace(/^"|"$/g, '') // Remove quotes
-                        .replace(/%20/g, ' ')  // Replace %20 with spaces
                         .trim()
                     )
                 )

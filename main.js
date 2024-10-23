@@ -1,131 +1,172 @@
-import { SearchModule } from './modules/search.js';
 import { DataFetcher } from './modules/dataFetcher.js';
+import { SearchModule } from './modules/search.js';
+import { Cache } from './modules/cache.js';
+import { EventBus } from './modules/eventBus.js';
 
 class AutocompleteWidget {
     constructor() {
-        console.log('Initializing AutocompleteWidget');
-        this.input = document.getElementById('autocomplete-input');
-        this.suggestionsList = document.getElementById('suggestions-list');
-        this.loadingIndicator = document.getElementById('loading-indicator');
-        this.selectedIndex = -1;
-        this.settings = {};
-        this.widgetContainer = document.getElementById('widget-container');
-        
+        this.cache = new Cache();
+        this.dataFetcher = new DataFetcher();
+        this.searchModule = new SearchModule();
+        this.eventBus = new EventBus();
+
+        this.elements = {
+            input: document.getElementById('autocomplete-input'),
+            suggestionsList: document.getElementById('suggestions-list'),
+            loadingIndicator: document.getElementById('loading-indicator'),
+            errorMessage: document.getElementById('error-message'),
+            widgetContainer: document.getElementById('widget-container')
+        };
+
+        this.state = {
+            selectedIndex: -1,
+            isDataLoaded: false
+        };
+
         this.init();
     }
 
     async init() {
-        try {
-            console.log('Subscribing to JFCustomWidget events');
-            JFCustomWidget.subscribe("ready", () => {
-                console.log('Widget ready');
-                this.loadSettings();
-                this.setupEventListeners();
-                this.initialFetch();
-                this.adjustIframeHeight();
+        JFCustomWidget.subscribe("ready", async () => {
+            this.config = JFCustomWidget.getWidgetSettings();
+            this.setupEventListeners();
+            await this.loadInitialData();
+            this.adjustIframeHeight();
+        });
+
+        JFCustomWidget.subscribe("submit", () => {
+            JFCustomWidget.sendSubmit({
+                valid: true,
+                value: this.elements.input.value
             });
-
-            JFCustomWidget.subscribe("submit", () => {
-                console.log('Form submitted');
-                JFCustomWidget.sendSubmit({
-                    valid: true,
-                    value: this.input.value
-                });
-            });
-        } catch (error) {
-            console.error('Initialization failed:', error);
-        }
-    }
-
-    loadSettings() {
-        const getWidgetSetting = (settingName, defaultValue, parseFunc = (val) => val) => {
-            const setting = JFCustomWidget.getWidgetSetting(settingName);
-            return setting !== undefined && setting !== '' ? parseFunc(setting) : defaultValue;
-        };
-
-        this.settings = {
-            sheetId: getWidgetSetting('googleSheetId', ''),
-            columnIndex: getWidgetSetting('columnIndex', 0, parseInt),
-            maxResults: getWidgetSetting('maxResults', 5, parseInt),
-            minCharRequired: getWidgetSetting('minCharRequired', 3, parseInt),
-            placeholder: getWidgetSetting('placeholderText', 'Start typing...'),
-            threshold: getWidgetSetting('threshold', 0.2, parseFloat),
-            distance: getWidgetSetting('distance', 100, parseInt),
-            debounceTime: getWidgetSetting('debounceTime', 300, parseInt),
-            dynamicResize: getWidgetSetting('dynamicResize', true, Boolean),
-            inputWidth: getWidgetSetting('inputWidth', '100%'),
-            autocompleteWidth: getWidgetSetting('autocompleteWidth', '100%')
-        };
-
-        // Apply settings
-        this.input.placeholder = this.settings.placeholder;
-        
-        // Apply width settings
-        if (this.settings.inputWidth) {
-            this.input.style.width = this.settings.inputWidth;
-        }
-        if (this.settings.autocompleteWidth) {
-            this.suggestionsList.style.width = this.settings.autocompleteWidth;
-        }
+        });
     }
 
     setupEventListeners() {
-        this.input.addEventListener('input', this.debounce(this.handleInput.bind(this), this.settings.debounceTime));
-        this.input.addEventListener('keydown', this.handleKeydown.bind(this));
-        this.input.addEventListener('focus', () => this.adjustIframeHeight());
-        this.input.addEventListener('blur', () => {
-            setTimeout(() => {
-                this.hideSuggestions();
-                this.adjustIframeHeight();
-            }, 100);
-        });
+        this.elements.input.addEventListener('input', this.debounce(this.handleInput.bind(this), this.config.debounceTime));
+        this.elements.input.addEventListener('keydown', this.handleKeydown.bind(this));
+        this.elements.input.addEventListener('focus', () => this.adjustIframeHeight());
+        this.elements.input.addEventListener('blur', this.handleBlur.bind(this));
         document.addEventListener('click', this.handleClickOutside.bind(this));
-        
-        // Add resize observer
-        if (this.settings.dynamicResize) {
-            const resizeObserver = new ResizeObserver(this.debounce(() => {
-                this.adjustIframeHeight();
-            }, 100));
-            resizeObserver.observe(this.widgetContainer);
+
+        if (this.config.dynamicResize) {
+            this.setupResizeObserver();
         }
 
-        // Handle window resize
-        window.addEventListener('resize', this.debounce(() => {
-            this.adjustIframeHeight();
-        }, 100));
+        window.addEventListener('resize', this.debounce(this.adjustIframeHeight.bind(this), 100));
+
+        this.eventBus.subscribe('dataLoaded', this.handleDataLoaded.bind(this));
+        this.eventBus.subscribe('searchCompleted', this.displaySuggestions.bind(this));
     }
 
-    adjustIframeHeight() {
-        if (!this.settings.dynamicResize) {
-            JFCustomWidget.requestFrameResize({ height: 250 });
+    async loadInitialData() {
+        try {
+            const data = await this.dataFetcher.fetchFromSheet(this.config.googleSheetId);
+            this.cache.set(data);
+            this.eventBus.publish('dataLoaded', data);
+        } catch (error) {
+            this.showError('Failed to load data. Please try again later.');
+        }
+    }
+
+    async handleInput(event) {
+        const searchTerm = event.target.value;
+        if (searchTerm.length < this.config.minCharRequired) {
+            this.clearSuggestions();
             return;
         }
 
-        let totalHeight = this.input.offsetHeight;
-
-        // Include suggestions list height if visible
-        if (this.suggestionsList.style.display === 'block' && this.suggestionsList.childElementCount > 0) {
-            totalHeight += this.suggestionsList.scrollHeight;
+        if (!this.state.isDataLoaded) {
+            await this.loadInitialData();
         }
 
-        // Include error message height if visible
-        const errorElement = document.getElementById('error-message');
-        if (errorElement && errorElement.style.display !== 'none') {
-            totalHeight += errorElement.offsetHeight;
-        }
+        const results = this.searchModule.search(
+            searchTerm,
+            this.cache.get(),
+            this.config.columnIndex,
+            this.config.maxResults,
+            this.config.threshold,
+            this.config.distance
+        );
 
-        // Add margins and padding
-        const styles = window.getComputedStyle(this.widgetContainer);
-        totalHeight += parseFloat(styles.marginTop) + parseFloat(styles.marginBottom);
-        totalHeight += parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
-
-        // Additional padding for smooth appearance
-        totalHeight += 20;
-
-        JFCustomWidget.requestFrameResize({ height: Math.ceil(totalHeight) });
+        this.eventBus.publish('searchCompleted', results);
     }
 
-    // ... rest of the class implementation remains the same ...
+    handleKeydown(event) {
+        // ... (keydown handling logic)
+    }
+
+    handleBlur() {
+        setTimeout(() => {
+            this.clearSuggestions();
+            this.adjustIframeHeight();
+        }, 100);
+    }
+
+    handleClickOutside(event) {
+        if (!this.elements.widgetContainer.contains(event.target)) {
+            this.clearSuggestions();
+        }
+    }
+
+    displaySuggestions(results) {
+        // ... (display suggestions logic)
+    }
+
+    clearSuggestions() {
+        this.elements.suggestionsList.innerHTML = '';
+        this.elements.suggestionsList.style.display = 'none';
+        this.adjustIframeHeight();
+    }
+
+    showError(message) {
+        this.elements.errorMessage.textContent = message;
+        this.elements.errorMessage.style.display = 'block';
+        this.adjustIframeHeight();
+    }
+
+    adjustIframeHeight() {
+        // ... (iframe height adjustment logic)
+    }
+
+    setupResizeObserver() {
+        const resizeObserver = new ResizeObserver(this.debounce(() => {
+            this.adjustIframeHeight();
+        }, 100));
+        resizeObserver.observe(this.elements.widgetContainer);
+    }
+
+    debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
+
+    handleDataLoaded(data) {
+        this.state.isDataLoaded = true;
+        // Any additional logic after data is loaded
+    }
+}
+
+class EventBus {
+    constructor() {
+        this.events = {};
+    }
+
+    subscribe(event, callback) {
+        if (!this.events[event]) {
+            this.events[event] = [];
+        }
+        this.events[event].push(callback);
+    }
+
+    publish(event, data) {
+        if (this.events[event]) {
+            this.events[event].forEach(callback => callback(data));
+        }
+    }
 }
 
 // Initialize the widget

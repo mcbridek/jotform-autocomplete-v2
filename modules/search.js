@@ -1,5 +1,6 @@
 export const SearchModule = {
     search(searchTerm, data, columnIndex, maxResults, threshold = 0.2, distance = 100) {
+        console.log('Search term:', searchTerm); // Log the search term
         if (!data || !Array.isArray(data) || !data.length) {
             console.error('[SearchModule] Invalid data provided');
             return [];
