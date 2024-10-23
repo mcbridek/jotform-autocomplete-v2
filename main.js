@@ -8,6 +8,7 @@ class AutocompleteWidget {
         this.loadingIndicator = document.getElementById('loading-indicator');
         this.selectedIndex = -1;
         this.settings = {};
+        this.widgetContainer = document.getElementById('widget-container');
         
         this.init();
     }
@@ -19,6 +20,7 @@ class AutocompleteWidget {
                 this.loadSettings();
                 this.setupEventListeners();
                 this.initialFetch();
+                this.resizeWidget();
             });
 
             // Handle form submission
@@ -42,7 +44,8 @@ class AutocompleteWidget {
             placeholder: JFCustomWidget.getWidgetSetting('placeholderText') || 'Start typing...',
             threshold: parseFloat(JFCustomWidget.getWidgetSetting('threshold')) || 0.2,
             distance: parseInt(JFCustomWidget.getWidgetSetting('distance')) || 100,
-            debounceTime: parseInt(JFCustomWidget.getWidgetSetting('debounceTime')) || 300
+            debounceTime: parseInt(JFCustomWidget.getWidgetSetting('debounceTime')) || 300,
+            dynamicResize: JFCustomWidget.getWidgetSetting('dynamicResize') !== false
         };
 
         // Apply settings
@@ -64,6 +67,44 @@ class AutocompleteWidget {
         this.input.addEventListener('input', this.debounce(this.handleInput.bind(this), this.settings.debounceTime));
         this.input.addEventListener('keydown', this.handleKeydown.bind(this));
         document.addEventListener('click', this.handleClickOutside.bind(this));
+        
+        // Add resize observer to handle dynamic content changes
+        if (this.settings.dynamicResize) {
+            const resizeObserver = new ResizeObserver(this.debounce(() => {
+                this.resizeWidget();
+            }, 100));
+            resizeObserver.observe(this.widgetContainer);
+        }
+    }
+
+    resizeWidget() {
+        if (!this.settings.dynamicResize) return;
+
+        const height = this.calculateTotalHeight();
+        JFCustomWidget.requestFrameResize({
+            height: Math.ceil(height)
+        });
+    }
+
+    calculateTotalHeight() {
+        const styles = window.getComputedStyle(this.widgetContainer);
+        const margins = parseFloat(styles.marginTop) + parseFloat(styles.marginBottom);
+        
+        let totalHeight = this.widgetContainer.offsetHeight + margins;
+
+        // Add extra padding for suggestions list when visible
+        if (this.suggestionsList.style.display === 'block') {
+            totalHeight += this.suggestionsList.offsetHeight;
+        }
+
+        // Add error message height if visible
+        const errorElement = document.getElementById('error-message');
+        if (errorElement && errorElement.style.display !== 'none') {
+            totalHeight += errorElement.offsetHeight;
+        }
+
+        // Add some buffer to prevent scrollbars
+        return totalHeight + 10;
     }
 
     debounce(func, wait) {
@@ -102,11 +143,13 @@ class AutocompleteWidget {
         const errorElement = document.getElementById('error-message');
         errorElement.textContent = message;
         errorElement.style.display = 'block';
+        this.resizeWidget();
     }
 
     hideError() {
         const errorElement = document.getElementById('error-message');
         errorElement.style.display = 'none';
+        this.resizeWidget();
     }
 
     async handleInput(event) {
@@ -135,13 +178,6 @@ class AutocompleteWidget {
             );
 
             this.displaySuggestions(matches);
-
-            // Notify parent about height change if enabled
-            if (JFCustomWidget.getWidgetSetting('dynamicResize')) {
-                JFCustomWidget.requestFrameResize({
-                    height: document.body.scrollHeight
-                });
-            }
         } catch (error) {
             console.error('Failed to fetch data:', error);
             this.hideLoading();
@@ -176,6 +212,7 @@ class AutocompleteWidget {
         }
 
         this.addSuggestionClickHandlers();
+        this.resizeWidget();
     }
 
     addSuggestionClickHandlers() {
@@ -236,6 +273,7 @@ class AutocompleteWidget {
     hideSuggestions() {
         this.suggestionsList.style.display = 'none';
         this.selectedIndex = -1;
+        this.resizeWidget();
     }
 }
 
